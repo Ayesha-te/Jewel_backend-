@@ -1,6 +1,24 @@
 import mongoose from "mongoose";
 import { applyCleanJson } from "./helpers/applyCleanJson.js";
 
+const productImageSchema = new mongoose.Schema(
+  {
+    url: {
+      type: String,
+      trim: true,
+      required: true,
+    },
+    color: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 const productSchema = new mongoose.Schema(
   {
     title: {
@@ -19,6 +37,14 @@ const productSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: "",
+    },
+    images: {
+      type: [productImageSchema],
+      default: [],
+    },
+    colors: {
+      type: [String],
+      default: [],
     },
     price: {
       type: Number,

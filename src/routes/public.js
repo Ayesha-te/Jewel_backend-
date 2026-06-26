@@ -10,7 +10,7 @@ const categoryListProjection = "slug name description designs image";
 const categoryDetailProjection = `${categoryListProjection} galleryImages`;
 const featuredProjection = "title image";
 const hotSellingProjection = "title image slug";
-const productProjection = "title categorySlug image price description featured hotSelling position";
+const productProjection = "title categorySlug image images colors price description featured hotSelling position";
 const siteSettingsProjection = "whatsappNumber whatsappLink instagram instagramLink facebookLink tiktokLink email address storeHours";
 
 function normalizeDoc(document) {

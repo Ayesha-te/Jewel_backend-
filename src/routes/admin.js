@@ -50,9 +50,42 @@ function normalizeStringArray(value) {
     return [];
   }
 
-  return value
+  return Array.from(
+    new Set(
+      value
     .map((item) => item?.toString().trim() || "")
-    .filter(Boolean);
+        .filter(Boolean),
+    ),
+  );
+}
+
+function normalizeDesignImages(value, fallbackImage, designLabel) {
+  const legacyImage = fallbackImage?.toString().trim() || "";
+
+  if (!Array.isArray(value) || value.length === 0) {
+    if (!legacyImage) {
+      throw new Error(`${designLabel} image is required.`);
+    }
+
+    return [{ url: legacyImage, color: "" }];
+  }
+
+  const images = value
+    .map((item) => ({
+      url: item?.url?.toString().trim() || item?.image?.toString().trim() || "",
+      color: item?.color?.toString().trim() || "",
+    }))
+    .filter((item) => item.url);
+
+  if (images.length === 0) {
+    if (!legacyImage) {
+      throw new Error(`${designLabel} image is required.`);
+    }
+
+    return [{ url: legacyImage, color: "" }];
+  }
+
+  return images;
 }
 
 function normalizeDesignItems(value) {
@@ -61,18 +94,28 @@ function normalizeDesignItems(value) {
   }
 
   return value.map((item, index) => {
-    const title = getRequiredString(item?.title, `Design ${index + 1} name`);
-    const image = getRequiredString(item?.image, `Design ${index + 1} image`);
+    const designLabel = `Design ${index + 1}`;
+    const title = getRequiredString(item?.title, `${designLabel} name`);
     const price = Number(item?.price);
 
     if (Number.isNaN(price) || price <= 0) {
-      throw new Error(`Design ${index + 1} price must be a valid positive number.`);
+      throw new Error(`${designLabel} price must be a valid positive number.`);
     }
+
+    const colors = normalizeStringArray(item?.colors);
+    const images = normalizeDesignImages(item?.images, item?.image, designLabel);
+    const imageColors = images.map((imageItem) => imageItem.color).filter(Boolean);
+    const mergedColors = Array.from(new Set([...colors, ...imageColors]));
 
     return {
       id: item?.id?.toString().trim() || "",
       title,
-      image,
+      image: images[0]?.url || "",
+      images: images.map((imageItem) => ({
+        url: imageItem.url,
+        color: imageItem.color && mergedColors.includes(imageItem.color) ? imageItem.color : "",
+      })),
+      colors: mergedColors,
       price,
       description: item?.description?.toString().trim() || "",
       featured: Boolean(item?.featured),
@@ -153,6 +196,8 @@ async function syncCategoryProducts({
     product.title = submittedProduct.title;
     product.categorySlug = nextSlug;
     product.image = submittedProduct.image;
+    product.images = submittedProduct.images;
+    product.colors = submittedProduct.colors;
     product.price = submittedProduct.price;
     product.description = submittedProduct.description || categoryDescription;
     product.featured = submittedProduct.featured;
@@ -253,7 +298,7 @@ router.post("/categories", async (req, res, next) => {
     const submittedProducts = normalizeDesignItems(req.body?.products);
     const submittedGalleryImages = normalizeStringArray(req.body?.galleryImages);
     const submittedDesigns = Math.max(0, Number(req.body?.designs || 0));
-    const galleryImages = submittedProducts.length > 0 ? submittedProducts.map((product) => product.image) : submittedGalleryImages;
+    const galleryImages = submittedProducts.length > 0 ? submittedProducts.map((product) => product.image).filter(Boolean) : submittedGalleryImages;
     const image = req.body?.image?.toString().trim() || galleryImages[0] || "";
     const designs = submittedProducts.length > 0 ? submittedProducts.length : galleryImages.length > 0 ? galleryImages.length : submittedDesigns;
 
@@ -299,7 +344,7 @@ router.put("/categories/:slug", async (req, res, next) => {
     const submittedProducts = normalizeDesignItems(req.body?.products);
     const submittedGalleryImages = normalizeStringArray(req.body?.galleryImages);
     const submittedDesigns = Math.max(0, Number(req.body?.designs || 0));
-    const galleryImages = submittedProducts.length > 0 ? submittedProducts.map((product) => product.image) : submittedGalleryImages;
+    const galleryImages = submittedProducts.length > 0 ? submittedProducts.map((product) => product.image).filter(Boolean) : submittedGalleryImages;
     const image = req.body?.image?.toString().trim() || galleryImages[0] || "";
     const designs = submittedProducts.length > 0 ? submittedProducts.length : galleryImages.length > 0 ? galleryImages.length : submittedDesigns;
 
@@ -380,7 +425,9 @@ router.post("/products", async (req, res, next) => {
     const categorySlug = slugify(getRequiredString(req.body?.categorySlug, "Category"));
     const description = req.body?.description?.toString().trim() || "";
     const price = Number(req.body?.price);
-    const image = req.body?.image?.toString().trim() || "";
+    const images = normalizeDesignImages(req.body?.images, req.body?.image, "Product");
+    const colors = Array.from(new Set([...normalizeStringArray(req.body?.colors), ...images.map((imageItem) => imageItem.color).filter(Boolean)]));
+    const image = images[0]?.url || "";
     const position = Math.max(0, Number(req.body?.position || 0));
 
     if (Number.isNaN(price) || price <= 0) {
@@ -398,6 +445,8 @@ router.post("/products", async (req, res, next) => {
       description,
       price,
       image,
+      images,
+      colors,
       featured: Boolean(req.body?.featured),
       hotSelling: Boolean(req.body?.hotSelling),
       position,
@@ -423,7 +472,9 @@ router.put("/products/:id", async (req, res, next) => {
     const categorySlug = slugify(getRequiredString(req.body?.categorySlug, "Category"));
     const description = req.body?.description?.toString().trim() || "";
     const price = Number(req.body?.price);
-    const image = req.body?.image?.toString().trim() || "";
+    const images = normalizeDesignImages(req.body?.images, req.body?.image || item.image, "Product");
+    const colors = Array.from(new Set([...normalizeStringArray(req.body?.colors), ...images.map((imageItem) => imageItem.color).filter(Boolean)]));
+    const image = images[0]?.url || "";
     const position = Math.max(0, Number(req.body?.position || item.position || 0));
 
     if (Number.isNaN(price) || price <= 0) {
@@ -440,6 +491,8 @@ router.put("/products/:id", async (req, res, next) => {
     item.description = description;
     item.price = price;
     item.image = image;
+    item.images = images;
+    item.colors = colors;
     item.featured = Boolean(req.body?.featured);
     item.hotSelling = Boolean(req.body?.hotSelling);
     item.position = position;
