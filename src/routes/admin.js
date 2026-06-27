@@ -254,7 +254,7 @@ function createOrderPdf(order) {
     `Address: ${order.customer.address}`,
     "",
     "Product | Color | Qty | Unit Price | Delivery | Total",
-    ...order.items.map((item) => `${item.productName} | ${item.color || "-"} | ${item.quantity} | PKR ${item.unitPrice.toLocaleString()} | PKR ${item.deliveryCharge.toLocaleString()} | PKR ${(item.unitPrice * item.quantity + item.deliveryCharge * item.quantity).toLocaleString()}`),
+    ...order.items.map((item) => `${item.productName} | ${item.color || "-"} | ${item.quantity} | PKR ${item.unitPrice.toLocaleString()} | PKR ${item.deliveryCharge.toLocaleString()} | PKR ${(item.unitPrice * item.quantity + item.deliveryCharge).toLocaleString()}`),
     "",
     `Subtotal: PKR ${order.subtotal.toLocaleString()}`,
     `Delivery: PKR ${order.deliveryTotal.toLocaleString()}`,

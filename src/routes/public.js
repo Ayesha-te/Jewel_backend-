@@ -170,7 +170,7 @@ router.post("/orders", async (req, res, next) => {
     });
 
     const subtotal = items.reduce((total, item) => total + item.unitPrice * item.quantity, 0);
-    const itemDeliveryTotal = items.reduce((total, item) => total + item.deliveryCharge * item.quantity, 0);
+    const itemDeliveryTotal = items.reduce((total, item) => total + item.deliveryCharge, 0);
     const deliveryTotal = itemDeliveryTotal > 0 ? itemDeliveryTotal : defaultDeliveryCharge;
     const order = await Order.create({
       customer,
