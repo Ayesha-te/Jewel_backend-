@@ -319,13 +319,30 @@ function createOrderPdf(order) {
     y -= rowHeight;
   }
 
-  // Totals section
+  // Totals table
   y -= 10;
-  content += "BT\n/F1 10 Tf\n300 " + y + " Td\n(Subtotal: PKR " + escapePdfText(order.subtotal.toLocaleString()) + ") Tj\nET\n";
-  y -= 15;
-  content += "BT\n/F1 10 Tf\n300 " + y + " Td\n(Delivery Charges: PKR " + escapePdfText(order.deliveryTotal.toLocaleString()) + ") Tj\nET\n";
-  y -= 15;
-  content += "BT\n/F1 11 Tf\n300 " + y + " Td\n(Grand Total: PKR " + escapePdfText(order.total.toLocaleString()) + ") Tj\nET\n";
+  const totalsRowHeight = 18;
+  const totalsData = [
+    ["Subtotal:", `PKR ${order.subtotal.toLocaleString()}`],
+    ["Delivery Charges:", `PKR ${order.deliveryTotal.toLocaleString()}`],
+    ["Grand Total:", `PKR ${order.total.toLocaleString()}`],
+  ];
+
+  for (const [label, value] of totalsData) {
+    // Draw borders for label cell
+    content += `300 ${y - totalsRowHeight} m 300 ${y} l 480 ${y} l 480 ${y - totalsRowHeight} l 300 ${y - totalsRowHeight} l S\n`;
+    // Draw borders for value cell
+    content += `480 ${y - totalsRowHeight} m 480 ${y} l 560 ${y} l 560 ${y - totalsRowHeight} l 480 ${y - totalsRowHeight} l S\n`;
+    // Draw divider between cells
+    content += `480 ${y - totalsRowHeight} m 480 ${y} l S\n`;
+
+    // Add label text
+    content += "BT\n/F1 9 Tf\n310 " + (y - totalsRowHeight + 4) + " Td\n(" + escapePdfText(label) + ") Tj\nET\n";
+    // Add value text
+    content += "BT\n/F1 9 Tf\n490 " + (y - totalsRowHeight + 4) + " Td\n(" + escapePdfText(value) + ") Tj\nET\n";
+    
+    y -= totalsRowHeight;
+  }
 
   content += "Q\n";
 
