@@ -242,33 +242,60 @@ function escapePdfText(value) {
 }
 
 function createOrderPdf(order) {
-  const lines = [
-    "Mani Jeweller's and Watch - Order Details",
-    `Order ID: ${order.id}`,
-    `Date: ${new Date(order.createdAt).toLocaleString("en-PK")}`,
-    `Status: ${order.status}`,
-    `Payment: ${order.paymentMethod}`,
-    `Customer: ${order.customer.name}`,
-    `Email: ${order.customer.email}`,
-    `Phone: ${order.customer.phone}`,
-    `Address: ${order.customer.address}`,
-    "",
-    "Product | Color | Qty | Unit Price | Delivery | Total",
-    ...order.items.map((item) => `${item.productName} | ${item.color || "-"} | ${item.quantity} | PKR ${item.unitPrice.toLocaleString()} | PKR ${item.deliveryCharge.toLocaleString()} | PKR ${(item.unitPrice * item.quantity + item.deliveryCharge).toLocaleString()}`),
-    "",
-    `Subtotal: PKR ${order.subtotal.toLocaleString()}`,
-    `Delivery: PKR ${order.deliveryTotal.toLocaleString()}`,
-    `Grand Total: PKR ${order.total.toLocaleString()}`,
+  const orderDate = new Date(order.createdAt).toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "numeric" });
+  const orderInfo = [
+    ["Order Number", order.id.slice(-8).toUpperCase()],
+    ["Order Date", orderDate],
+    ["Customer Name", order.customer.name],
+    ["Phone Number", order.customer.phone],
+    ["Email Address", order.customer.email],
+    ["Street Address", order.customer.address],
+    ["Payment Method", order.paymentMethod],
   ];
+
+  const itemsData = order.items.map((item) => [
+    item.productName,
+    item.color || "-",
+    item.quantity.toString(),
+    `PKR ${item.unitPrice.toLocaleString()}`,
+    `PKR ${item.deliveryCharge.toLocaleString()}`,
+    `PKR ${(item.unitPrice * item.quantity + item.deliveryCharge).toLocaleString()}`,
+  ]);
+
+  const lines = [
+    "MANI JEWELLER'S AND WATCH - ORDER DETAILS",
+    "",
+  ];
+
+  orderInfo.forEach(([label, value]) => {
+    lines.push(`${label}: ${value}`);
+  });
+
+  lines.push("", "ITEMS ORDERED", "");
+  lines.push("Product | Color | Qty | Unit Price | Delivery | Total");
+  itemsData.forEach((item) => {
+    lines.push(item.join(" | "));
+  });
+
+  lines.push("");
+  lines.push(`Subtotal: PKR ${order.subtotal.toLocaleString()}`);
+  lines.push(`Delivery Charges: PKR ${order.deliveryTotal.toLocaleString()}`);
+  lines.push(`Grand Total: PKR ${order.total.toLocaleString()}`);
 
   const content = [
     "BT",
-    "/F1 11 Tf",
-    "50 790 Td",
-    "14 TL",
-    ...lines.map((line, index) => `${index === 0 ? "" : "T* "}(${escapePdfText(line)}) Tj`),
+    "/F1 10 Tf",
+    "40 780 Td",
+    "12 TL",
+    ...lines.map((line, index) => {
+      if (line === "") {
+        return "0 -3 Td";
+      }
+      return `(${escapePdfText(line)}) Tj T*`;
+    }),
     "ET",
   ].join("\n");
+
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -276,6 +303,7 @@ function createOrderPdf(order) {
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
   ];
+
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
 
