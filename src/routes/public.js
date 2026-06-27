@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { Category } from "../models/Category.js";
 import { FeaturedItem } from "../models/FeaturedItem.js";
 import { HotSellingItem } from "../models/HotSellingItem.js";
@@ -120,6 +121,11 @@ function parseProductId(rawId) {
   return value;
 }
 
+function getValidProductId(rawId) {
+  const productId = parseProductId(rawId);
+  return mongoose.Types.ObjectId.isValid(productId) ? productId : "";
+}
+
 router.post("/orders", async (req, res, next) => {
   try {
     const customer = {
@@ -137,12 +143,12 @@ router.post("/orders", async (req, res, next) => {
 
     const settings = await SiteSettings.findOne({ key: "site" }).select("defaultDeliveryCharge").lean();
     const defaultDeliveryCharge = Math.max(0, Number(settings?.defaultDeliveryCharge || 0));
-    const productIds = submittedItems.map((item) => parseProductId(item?.productId || item?.id)).filter(Boolean);
+    const productIds = submittedItems.map((item) => getValidProductId(item?.productId || item?.id)).filter(Boolean);
     const products = await Product.find({ _id: { $in: productIds } }).select(productProjection).lean();
     const productsById = new Map(products.map((product) => [product._id.toString(), product]));
 
     const items = submittedItems.map((item, index) => {
-      const productId = parseProductId(item?.productId || item?.id);
+      const productId = getValidProductId(item?.productId || item?.id);
       const product = productId ? productsById.get(productId) : null;
       const quantity = Math.max(1, Number(item?.quantity || 1));
       const productName = (product?.title || item?.title || `Item ${index + 1}`).toString().trim();
