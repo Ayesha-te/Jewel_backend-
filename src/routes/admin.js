@@ -319,9 +319,11 @@ function createOrderPdf(order) {
     y -= rowHeight;
   }
 
-  // Totals table
+  // Totals table - aligned with items table
   y -= 10;
   const totalsRowHeight = 18;
+  const totalsLabelWidth = 230;
+  const totalsValueWidth = 130;
   const totalsData = [
     ["Subtotal:", `PKR ${order.subtotal.toLocaleString()}`],
     ["Delivery Charges:", `PKR ${order.deliveryTotal.toLocaleString()}`],
@@ -330,16 +332,16 @@ function createOrderPdf(order) {
 
   for (const [label, value] of totalsData) {
     // Draw borders for label cell
-    content += `300 ${y - totalsRowHeight} m 300 ${y} l 480 ${y} l 480 ${y - totalsRowHeight} l 300 ${y - totalsRowHeight} l S\n`;
+    content += `50 ${y - totalsRowHeight} m 50 ${y} l 280 ${y} l 280 ${y - totalsRowHeight} l 50 ${y - totalsRowHeight} l S\n`;
     // Draw borders for value cell
-    content += `480 ${y - totalsRowHeight} m 480 ${y} l 560 ${y} l 560 ${y - totalsRowHeight} l 480 ${y - totalsRowHeight} l S\n`;
+    content += `280 ${y - totalsRowHeight} m 280 ${y} l 410 ${y} l 410 ${y - totalsRowHeight} l 280 ${y - totalsRowHeight} l S\n`;
     // Draw divider between cells
-    content += `480 ${y - totalsRowHeight} m 480 ${y} l S\n`;
+    content += `280 ${y - totalsRowHeight} m 280 ${y} l S\n`;
 
     // Add label text
-    content += "BT\n/F1 9 Tf\n310 " + (y - totalsRowHeight + 4) + " Td\n(" + escapePdfText(label) + ") Tj\nET\n";
+    content += "BT\n/F1 9 Tf\n60 " + (y - totalsRowHeight + 4) + " Td\n(" + escapePdfText(label) + ") Tj\nET\n";
     // Add value text
-    content += "BT\n/F1 9 Tf\n490 " + (y - totalsRowHeight + 4) + " Td\n(" + escapePdfText(value) + ") Tj\nET\n";
+    content += "BT\n/F1 9 Tf\n290 " + (y - totalsRowHeight + 4) + " Td\n(" + escapePdfText(value) + ") Tj\nET\n";
     
     y -= totalsRowHeight;
   }
