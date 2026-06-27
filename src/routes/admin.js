@@ -7,6 +7,7 @@ import { AdminUser } from "../models/AdminUser.js";
 import { Category } from "../models/Category.js";
 import { FeaturedItem } from "../models/FeaturedItem.js";
 import { HotSellingItem } from "../models/HotSellingItem.js";
+import { Order } from "../models/Order.js";
 import { Product } from "../models/Product.js";
 import { SiteSettings } from "../models/SiteSettings.js";
 import { slugify } from "../utils/slugify.js";
@@ -97,9 +98,15 @@ function normalizeDesignItems(value) {
     const designLabel = `Design ${index + 1}`;
     const title = getRequiredString(item?.title, `${designLabel} name`);
     const price = Number(item?.price);
+    const basePrice = Math.max(0, Number(item?.basePrice || 0));
+    const deliveryCharge = Math.max(0, Number(item?.deliveryCharge || 0));
 
     if (Number.isNaN(price) || price <= 0) {
       throw new Error(`${designLabel} price must be a valid positive number.`);
+    }
+
+    if (basePrice > 0 && basePrice < price) {
+      throw new Error(`${designLabel} original price must be greater than or equal to the selling price.`);
     }
 
     const colors = normalizeStringArray(item?.colors);
@@ -117,6 +124,8 @@ function normalizeDesignItems(value) {
       })),
       colors: mergedColors,
       price,
+      basePrice,
+      deliveryCharge,
       description: item?.description?.toString().trim() || "",
       featured: Boolean(item?.featured),
       hotSelling: Boolean(item?.hotSelling),
@@ -199,6 +208,8 @@ async function syncCategoryProducts({
     product.images = submittedProduct.images;
     product.colors = submittedProduct.colors;
     product.price = submittedProduct.price;
+    product.basePrice = submittedProduct.basePrice;
+    product.deliveryCharge = submittedProduct.deliveryCharge;
     product.description = submittedProduct.description || categoryDescription;
     product.featured = submittedProduct.featured;
     product.hotSelling = submittedProduct.hotSelling;
@@ -224,6 +235,63 @@ async function getSiteSettingsDocument() {
   }
 
   return SiteSettings.create(defaultSiteSettings);
+}
+
+function escapePdfText(value) {
+  return value.toString().replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function createOrderPdf(order) {
+  const lines = [
+    "Mani Jeweller's and Watch - Order Details",
+    `Order ID: ${order.id}`,
+    `Date: ${new Date(order.createdAt).toLocaleString("en-PK")}`,
+    `Status: ${order.status}`,
+    `Payment: ${order.paymentMethod}`,
+    `Customer: ${order.customer.name}`,
+    `Email: ${order.customer.email}`,
+    `Phone: ${order.customer.phone}`,
+    `Address: ${order.customer.address}`,
+    "",
+    "Product | Color | Qty | Unit Price | Delivery | Total",
+    ...order.items.map((item) => `${item.productName} | ${item.color || "-"} | ${item.quantity} | PKR ${item.unitPrice.toLocaleString()} | PKR ${item.deliveryCharge.toLocaleString()} | PKR ${(item.unitPrice * item.quantity + item.deliveryCharge * item.quantity).toLocaleString()}`),
+    "",
+    `Subtotal: PKR ${order.subtotal.toLocaleString()}`,
+    `Delivery: PKR ${order.deliveryTotal.toLocaleString()}`,
+    `Grand Total: PKR ${order.total.toLocaleString()}`,
+  ];
+
+  const content = [
+    "BT",
+    "/F1 11 Tf",
+    "50 790 Td",
+    "14 TL",
+    ...lines.map((line, index) => `${index === 0 ? "" : "T* "}(${escapePdfText(line)}) Tj`),
+    "ET",
+  ].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${offset.toString().padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return Buffer.from(pdf);
 }
 
 router.post("/auth/login", async (req, res, next) => {
@@ -263,11 +331,12 @@ router.get("/auth/me", async (req, res) => {
 
 router.get("/dashboard", async (_req, res, next) => {
   try {
-    const [categories, products, featured, hotSelling] = await Promise.all([
+    const [categories, products, featured, hotSelling, orders] = await Promise.all([
       Category.countDocuments(),
       Product.countDocuments(),
       FeaturedItem.countDocuments(),
       HotSellingItem.countDocuments(),
+      Order.countDocuments(),
     ]);
 
     res.json({
@@ -275,6 +344,7 @@ router.get("/dashboard", async (_req, res, next) => {
       products,
       featured,
       hotSelling,
+      orders,
     });
   } catch (error) {
     next(error);
@@ -429,9 +499,15 @@ router.post("/products", async (req, res, next) => {
     const colors = Array.from(new Set([...normalizeStringArray(req.body?.colors), ...images.map((imageItem) => imageItem.color).filter(Boolean)]));
     const image = images[0]?.url || "";
     const position = Math.max(0, Number(req.body?.position || 0));
+    const basePrice = Math.max(0, Number(req.body?.basePrice || 0));
+    const deliveryCharge = Math.max(0, Number(req.body?.deliveryCharge || 0));
 
     if (Number.isNaN(price) || price <= 0) {
       return res.status(400).json({ message: "Price must be a valid positive number." });
+    }
+
+    if (basePrice > 0 && basePrice < price) {
+      return res.status(400).json({ message: "Original price must be greater than or equal to the selling price." });
     }
 
     const category = await Category.findOne({ slug: categorySlug });
@@ -444,6 +520,8 @@ router.post("/products", async (req, res, next) => {
       categorySlug,
       description,
       price,
+      basePrice,
+      deliveryCharge,
       image,
       images,
       colors,
@@ -476,9 +554,15 @@ router.put("/products/:id", async (req, res, next) => {
     const colors = Array.from(new Set([...normalizeStringArray(req.body?.colors), ...images.map((imageItem) => imageItem.color).filter(Boolean)]));
     const image = images[0]?.url || "";
     const position = Math.max(0, Number(req.body?.position || item.position || 0));
+    const basePrice = Math.max(0, Number(req.body?.basePrice || 0));
+    const deliveryCharge = Math.max(0, Number(req.body?.deliveryCharge || 0));
 
     if (Number.isNaN(price) || price <= 0) {
       return res.status(400).json({ message: "Price must be a valid positive number." });
+    }
+
+    if (basePrice > 0 && basePrice < price) {
+      return res.status(400).json({ message: "Original price must be greater than or equal to the selling price." });
     }
 
     const category = await Category.findOne({ slug: categorySlug });
@@ -493,6 +577,8 @@ router.put("/products/:id", async (req, res, next) => {
     item.image = image;
     item.images = images;
     item.colors = colors;
+    item.basePrice = basePrice;
+    item.deliveryCharge = deliveryCharge;
     item.featured = Boolean(req.body?.featured);
     item.hotSelling = Boolean(req.body?.hotSelling);
     item.position = position;
@@ -517,6 +603,51 @@ router.delete("/products/:id", async (req, res, next) => {
     await removeProductCollections([deleted.id]);
 
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/orders", async (_req, res, next) => {
+  try {
+    const items = await Order.find().sort({ createdAt: -1 });
+    res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/orders/:id/status", async (req, res, next) => {
+  try {
+    const status = req.body?.status?.toString().trim();
+    const allowedStatuses = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid order status." });
+    }
+
+    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    res.json(order);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/orders/:id/pdf", async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    const pdf = createOrderPdf(order);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="order-${order.id}.pdf"`);
+    res.send(pdf);
   } catch (error) {
     next(error);
   }
@@ -618,6 +749,7 @@ router.put("/settings", async (req, res, next) => {
     settings.email = getRequiredString(req.body?.email, "Email");
     settings.address = getRequiredString(req.body?.address, "Address");
     settings.storeHours = getRequiredString(req.body?.storeHours, "Store hours");
+    settings.defaultDeliveryCharge = Math.max(0, Number(req.body?.defaultDeliveryCharge || 0));
     await settings.save();
 
     res.json(settings);

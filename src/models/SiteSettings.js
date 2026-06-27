@@ -55,6 +55,11 @@ const siteSettingsSchema = new mongoose.Schema(
       trim: true,
       default: "10 AM - 10 PM",
     },
+    defaultDeliveryCharge: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   {
     timestamps: true,

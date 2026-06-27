@@ -9,4 +9,5 @@ export const defaultSiteSettings = {
   email: "",
   address: "",
   storeHours: "",
+  defaultDeliveryCharge: 0,
 };
