@@ -243,6 +243,7 @@ function escapePdfText(value) {
 
 function createOrderPdf(order) {
   const orderDate = new Date(order.createdAt).toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "numeric" });
+  
   const orderInfo = [
     ["Order Number", order.id.slice(-8).toUpperCase()],
     ["Order Date", orderDate],
@@ -262,39 +263,71 @@ function createOrderPdf(order) {
     `PKR ${(item.unitPrice * item.quantity + item.deliveryCharge).toLocaleString()}`,
   ]);
 
-  const lines = [
-    "MANI JEWELLER'S AND WATCH - ORDER DETAILS",
-    "",
-  ];
+  let content = "q\n";
+  content += "0.5 w\n";
+  content += "BT\n/F1 14 Tf\n50 750 Td\n(MANI JEWELLER'S AND WATCH - ORDER DETAILS) Tj\nET\n";
 
-  orderInfo.forEach(([label, value]) => {
-    lines.push(`${label}: ${value}`);
-  });
+  // Draw info table with borders
+  const colWidth = 250;
+  const rowHeight = 20;
+  let y = 720;
 
-  lines.push("", "ITEMS ORDERED", "");
-  lines.push("Product | Color | Qty | Unit Price | Delivery | Total");
-  itemsData.forEach((item) => {
-    lines.push(item.join(" | "));
-  });
+  for (let i = 0; i < orderInfo.length; i++) {
+    const [label, value] = orderInfo[i];
+    // Draw row border
+    content += `50 ${y - rowHeight} m 50 ${y} l 300 ${y} l 300 ${y - rowHeight} l 50 ${y - rowHeight} l S\n`;
+    content += `300 ${y - rowHeight} m 300 ${y} l 550 ${y} l 550 ${y - rowHeight} l 300 ${y - rowHeight} l S\n`;
+    
+    // Draw divider between cells
+    content += `300 ${y - rowHeight} m 300 ${y} l S\n`;
 
-  lines.push("");
-  lines.push(`Subtotal: PKR ${order.subtotal.toLocaleString()}`);
-  lines.push(`Delivery Charges: PKR ${order.deliveryTotal.toLocaleString()}`);
-  lines.push(`Grand Total: PKR ${order.total.toLocaleString()}`);
+    // Add text for label
+    content += "BT\n/F1 10 Tf\n0 0 0 rg\n60 " + (y - rowHeight + 6) + " Td\n(" + escapePdfText(label) + ") Tj\nET\n";
+    
+    // Add text for value
+    content += "BT\n/F1 10 Tf\n310 " + (y - rowHeight + 6) + " Td\n(" + escapePdfText(value.substring(0, 35)) + ") Tj\nET\n";
+    
+    y -= rowHeight;
+  }
 
-  const content = [
-    "BT",
-    "/F1 10 Tf",
-    "40 780 Td",
-    "12 TL",
-    ...lines.map((line, index) => {
-      if (line === "") {
-        return "0 -3 Td";
-      }
-      return `(${escapePdfText(line)}) Tj T*`;
-    }),
-    "ET",
-  ].join("\n");
+  // Items table section
+  y -= 20;
+  content += "BT\n/F1 12 Tf\n50 " + (y) + " Td\n(ITEMS ORDERED) Tj\nET\n";
+  y -= 20;
+
+  const itemColWidths = [100, 50, 40, 60, 60, 50];
+  const headers = ["Product", "Color", "Qty", "Unit Price", "Delivery", "Total"];
+
+  // Draw header row
+  let x = 50;
+  for (let i = 0; i < headers.length; i++) {
+    content += `${x} ${y - rowHeight} m ${x} ${y} l ${x + itemColWidths[i]} ${y} l ${x + itemColWidths[i]} ${y - rowHeight} l ${x} ${y - rowHeight} l S\n`;
+    content += `${x} ${y - rowHeight} m ${x + itemColWidths[i]} ${y - rowHeight} l S\n`;
+    content += "BT\n/F1 9 Tf\n" + (x + 3) + " " + (y - rowHeight + 5) + " Td\n(" + escapePdfText(headers[i]) + ") Tj\nET\n";
+    x += itemColWidths[i];
+  }
+  y -= rowHeight;
+
+  // Draw item rows
+  for (const item of itemsData) {
+    x = 50;
+    for (let i = 0; i < item.length; i++) {
+      content += `${x} ${y - rowHeight} m ${x} ${y} l ${x + itemColWidths[i]} ${y} l ${x + itemColWidths[i]} ${y - rowHeight} l ${x} ${y - rowHeight} l S\n`;
+      content += "BT\n/F1 8 Tf\n" + (x + 3) + " " + (y - rowHeight + 5) + " Td\n(" + escapePdfText(item[i].substring(0, 15)) + ") Tj\nET\n";
+      x += itemColWidths[i];
+    }
+    y -= rowHeight;
+  }
+
+  // Totals section
+  y -= 10;
+  content += "BT\n/F1 10 Tf\n300 " + y + " Td\n(Subtotal: PKR " + escapePdfText(order.subtotal.toLocaleString()) + ") Tj\nET\n";
+  y -= 15;
+  content += "BT\n/F1 10 Tf\n300 " + y + " Td\n(Delivery Charges: PKR " + escapePdfText(order.deliveryTotal.toLocaleString()) + ") Tj\nET\n";
+  y -= 15;
+  content += "BT\n/F1 11 Tf\n300 " + y + " Td\n(Grand Total: PKR " + escapePdfText(order.total.toLocaleString()) + ") Tj\nET\n";
+
+  content += "Q\n";
 
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
