@@ -169,12 +169,36 @@ function getCategorySubmission(body, existingCategory = null) {
   };
 }
 
-function ensureBlobUploadIsConfigured() {
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    return;
+function getBlobReadWriteToken() {
+  const directToken = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  if (directToken) {
+    return directToken;
   }
 
-  throw new Error("BLOB_READ_WRITE_TOKEN is not configured on the backend.");
+  const configuredEnvName = process.env.BLOB_TOKEN_ENV_NAME?.trim();
+  if (configuredEnvName) {
+    const configuredToken = process.env[configuredEnvName]?.trim();
+    if (configuredToken) {
+      return configuredToken;
+    }
+
+    throw new Error(`${configuredEnvName} is configured as BLOB_TOKEN_ENV_NAME, but no token value was found.`);
+  }
+
+  const prefixedTokenEntries = Object.entries(process.env).filter(
+    ([key, value]) => key.endsWith("_BLOB_READ_WRITE_TOKEN") && typeof value === "string" && value.trim(),
+  );
+
+  if (prefixedTokenEntries.length === 1) {
+    return prefixedTokenEntries[0][1].trim();
+  }
+
+  if (prefixedTokenEntries.length > 1) {
+    const names = prefixedTokenEntries.map(([key]) => key).sort().join(", ");
+    throw new Error(`Multiple Blob token env vars were found (${names}). Set BLOB_READ_WRITE_TOKEN or BLOB_TOKEN_ENV_NAME explicitly on the backend.`);
+  }
+
+  throw new Error("No Blob read-write token was found on the backend. Set BLOB_READ_WRITE_TOKEN, set BLOB_TOKEN_ENV_NAME, or connect the Blob store to this Vercel project.");
 }
 
 function isSafeUploadPath(pathname) {
@@ -452,14 +476,14 @@ router.post("/auth/login", async (req, res, next) => {
 
 router.post("/uploads", async (req, res, next) => {
   try {
-    ensureBlobUploadIsConfigured();
+    const blobReadWriteToken = getBlobReadWriteToken();
 
     if (req.body?.type !== "blob.upload-completed") {
       req.user = await authenticateRequest(req);
     }
 
     const json = await handleUpload({
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token: blobReadWriteToken,
       request: req,
       body: req.body,
       onBeforeGenerateToken: async (pathname) => {
