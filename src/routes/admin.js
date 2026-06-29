@@ -1,8 +1,9 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { handleUpload } from "@vercel/blob/client";
 import { Router } from "express";
 import { defaultSiteSettings } from "../config/defaultData.js";
-import { requireAuth } from "../middleware/auth.js";
+import { authenticateRequest, requireAuth } from "../middleware/auth.js";
 import { AdminUser } from "../models/AdminUser.js";
 import { Category } from "../models/Category.js";
 import { FeaturedItem } from "../models/FeaturedItem.js";
@@ -166,6 +167,18 @@ function getCategorySubmission(body, existingCategory = null) {
     image,
     designs,
   };
+}
+
+function ensureBlobUploadIsConfigured() {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    return;
+  }
+
+  throw new Error("BLOB_READ_WRITE_TOKEN is not configured on the backend.");
+}
+
+function isSafeUploadPath(pathname) {
+  return typeof pathname === "string" && pathname.startsWith("admin-uploads/");
 }
 
 async function removeProductCollections(productIds) {
@@ -430,6 +443,42 @@ router.post("/auth/login", async (req, res, next) => {
       token: signToken(user),
       user: sanitizeUser(user),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/uploads", async (req, res, next) => {
+  try {
+    ensureBlobUploadIsConfigured();
+
+    if (req.body?.type !== "blob.upload-completed") {
+      req.user = await authenticateRequest(req);
+    }
+
+    const json = await handleUpload({
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+      request: req,
+      body: req.body,
+      onBeforeGenerateToken: async (pathname) => {
+        if (!isSafeUploadPath(pathname)) {
+          throw new Error("Invalid upload path.");
+        }
+
+        return {
+          allowedContentTypes: ["image/*"],
+          addRandomSuffix: true,
+          allowOverwrite: false,
+          maximumSizeInBytes: 50 * 1024 * 1024,
+          validUntil: Date.now() + 60 * 60 * 1000,
+        };
+      },
+      onUploadCompleted: async () => {
+        // The admin stores the blob URL directly in Mongo, so no extra callback work is needed.
+      },
+    });
+
+    res.json(json);
   } catch (error) {
     next(error);
   }
