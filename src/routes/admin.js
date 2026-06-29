@@ -15,6 +15,12 @@ import { slugify } from "../utils/slugify.js";
 
 const router = Router();
 
+function createHttpError(message, status) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
 function sanitizeUser(user) {
   return {
     id: user.id,
@@ -182,7 +188,7 @@ function getBlobReadWriteToken() {
       return configuredToken;
     }
 
-    throw new Error(`${configuredEnvName} is configured as BLOB_TOKEN_ENV_NAME, but no token value was found.`);
+    throw createHttpError(`${configuredEnvName} is configured as BLOB_TOKEN_ENV_NAME, but no token value was found.`, 503);
   }
 
   const prefixedTokenEntries = Object.entries(process.env).filter(
@@ -195,10 +201,10 @@ function getBlobReadWriteToken() {
 
   if (prefixedTokenEntries.length > 1) {
     const names = prefixedTokenEntries.map(([key]) => key).sort().join(", ");
-    throw new Error(`Multiple Blob token env vars were found (${names}). Set BLOB_READ_WRITE_TOKEN or BLOB_TOKEN_ENV_NAME explicitly on the backend.`);
+    throw createHttpError(`Multiple Blob token env vars were found (${names}). Set BLOB_READ_WRITE_TOKEN or BLOB_TOKEN_ENV_NAME explicitly on the backend.`, 500);
   }
 
-  throw new Error("No Blob read-write token was found on the backend. Set BLOB_READ_WRITE_TOKEN, set BLOB_TOKEN_ENV_NAME, or connect the Blob store to this Vercel project.");
+  throw createHttpError("No Blob read-write token was found on the backend. Set BLOB_READ_WRITE_TOKEN, set BLOB_TOKEN_ENV_NAME, or connect the Blob store to this Vercel project.", 503);
 }
 
 function isSafeUploadPath(pathname) {
@@ -488,7 +494,7 @@ router.post("/uploads", async (req, res, next) => {
       body: req.body,
       onBeforeGenerateToken: async (pathname) => {
         if (!isSafeUploadPath(pathname)) {
-          throw new Error("Invalid upload path.");
+          throw createHttpError("Invalid upload path.", 400);
         }
 
         return {
