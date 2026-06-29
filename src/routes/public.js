@@ -9,10 +9,11 @@ import { SiteSettings } from "../models/SiteSettings.js";
 
 const router = Router();
 const categoryListProjection = "slug name description designs image";
-const categoryDetailProjection = `${categoryListProjection} galleryImages`;
 const featuredProjection = "title image";
 const hotSellingProjection = "title image slug";
-const productProjection = "title categorySlug image images colors price basePrice deliveryCharge description featured hotSelling position";
+const categoryGalleryProjection = "galleryImages";
+const productListProjection = "title categorySlug image colors price basePrice deliveryCharge description featured hotSelling position";
+const productDetailProjection = `${productListProjection} images`;
 const siteSettingsProjection = "whatsappNumber whatsappLink instagram instagramLink facebookLink tiktokLink email address storeHours defaultDeliveryCharge";
 
 function normalizeDoc(document) {
@@ -75,15 +76,10 @@ router.get("/categories/:slug", async (req, res, next) => {
   try {
     const { slug } = req.params;
     setPublicCacheHeaders(res);
-    const category = await Category.findOne({ slug }).select(categoryDetailProjection).lean();
-
-    if (!category) {
-      return res.status(404).json({ message: "Category not found." });
-    }
-
-    const [products, relatedCategories, siteChrome] = await Promise.all([
+    const [category, products, relatedCategories, siteChrome] = await Promise.all([
+      Category.findOne({ slug }).select(categoryListProjection).lean(),
       Product.find({ categorySlug: slug })
-        .select(productProjection)
+        .select(productListProjection)
         .sort({ position: 1, createdAt: 1 })
         .allowDiskUse(true)
         .lean(),
@@ -91,16 +87,48 @@ router.get("/categories/:slug", async (req, res, next) => {
       getSiteChromeData(),
     ]);
 
+    if (!category) {
+      return res.status(404).json({ message: "Category not found." });
+    }
+
+    let galleryImages = [];
+    if (products.length === 0) {
+      const categoryGallery = await Category.findOne({ slug }).select(categoryGalleryProjection).lean();
+      galleryImages = Array.isArray(categoryGallery?.galleryImages) ? categoryGallery.galleryImages : [];
+    }
+
     res.json({
       site: {
         ...siteChrome,
         featured: [],
         hotSelling: [],
       },
-      category: normalizeDoc(category),
+      category: {
+        ...normalizeDoc(category),
+        galleryImages,
+      },
       products: normalizeDocs(products),
       relatedCategories: normalizeDocs(relatedCategories),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/products/:id", async (req, res, next) => {
+  try {
+    setPublicCacheHeaders(res);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    const product = await Product.findById(req.params.id).select(productDetailProjection).lean();
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    res.json({ product: normalizeDoc(product) });
   } catch (error) {
     next(error);
   }
@@ -148,7 +176,7 @@ router.post("/orders", async (req, res, next) => {
     const settings = await SiteSettings.findOne({ key: "site" }).select("defaultDeliveryCharge").lean();
     const defaultDeliveryCharge = Math.max(0, Number(settings?.defaultDeliveryCharge || 0));
     const productIds = submittedItems.map((item) => getValidProductId(item?.productId || item?.id)).filter(Boolean);
-    const products = await Product.find({ _id: { $in: productIds } }).select(productProjection).lean();
+    const products = await Product.find({ _id: { $in: productIds } }).select(productListProjection).lean();
     const productsById = new Map(products.map((product) => [product._id.toString(), product]));
 
     const items = submittedItems.map((item, index) => {

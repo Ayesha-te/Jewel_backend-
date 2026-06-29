@@ -211,6 +211,56 @@ function isSafeUploadPath(pathname) {
   return typeof pathname === "string" && pathname.startsWith("admin-uploads/");
 }
 
+function mapCategoryWithStats(category, statsBySlug) {
+  const stats = statsBySlug.get(category.slug);
+
+  return {
+    ...category.toJSON(),
+    designs: stats?.productCount ?? category.designs,
+    featuredCount: stats?.featuredCount ?? 0,
+    hotSellingCount: stats?.hotSellingCount ?? 0,
+  };
+}
+
+async function getCategoryStatsBySlug() {
+  const stats = await Product.aggregate([
+    {
+      $group: {
+        _id: "$categorySlug",
+        productCount: { $sum: 1 },
+        featuredCount: {
+          $sum: {
+            $cond: ["$featured", 1, 0],
+          },
+        },
+        hotSellingCount: {
+          $sum: {
+            $cond: ["$hotSelling", 1, 0],
+          },
+        },
+      },
+    },
+  ]);
+
+  return new Map(stats.map((entry) => [entry._id, entry]));
+}
+
+const adminOrderProjection = [
+  "customer",
+  "items.productName",
+  "items.color",
+  "items.quantity",
+  "items.unitPrice",
+  "items.deliveryCharge",
+  "paymentMethod",
+  "status",
+  "subtotal",
+  "deliveryTotal",
+  "total",
+  "createdAt",
+  "updatedAt",
+].join(" ");
+
 async function removeProductCollections(productIds) {
   if (productIds.length === 0) {
     return;
@@ -548,8 +598,38 @@ router.get("/dashboard", async (_req, res, next) => {
 
 router.get("/categories", async (_req, res, next) => {
   try {
-    const items = await Category.find().sort({ name: 1 });
+    const [categories, statsBySlug] = await Promise.all([
+      Category.find().select("slug name description designs image").sort({ name: 1 }),
+      getCategoryStatsBySlug(),
+    ]);
+    const items = categories.map((category) => mapCategoryWithStats(category, statsBySlug));
     res.json({ items });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/categories/:slug", async (req, res, next) => {
+  try {
+    const { slug } = req.params;
+    const [category, products] = await Promise.all([
+      Category.findOne({ slug }),
+      Product.find({ categorySlug: slug })
+        .sort({ position: 1, createdAt: 1 })
+        .allowDiskUse(true),
+    ]);
+
+    if (!category) {
+      return res.status(404).json({ message: "Category not found." });
+    }
+
+    res.json({
+      ...category.toJSON(),
+      designs: products.length > 0 ? products.length : category.designs,
+      featuredCount: products.filter((product) => product.featured).length,
+      hotSellingCount: products.filter((product) => product.hotSelling).length,
+      products: products.map((product) => product.toJSON()),
+    });
   } catch (error) {
     next(error);
   }
@@ -813,7 +893,9 @@ router.delete("/products/:id", async (req, res, next) => {
 
 router.get("/orders", async (_req, res, next) => {
   try {
-    const items = await Order.find().sort({ createdAt: -1 });
+    const items = await Order.find()
+      .select(adminOrderProjection)
+      .sort({ createdAt: -1 });
     res.json({ items });
   } catch (error) {
     next(error);
@@ -829,7 +911,8 @@ router.patch("/orders/:id/status", async (req, res, next) => {
       return res.status(400).json({ message: "Invalid order status." });
     }
 
-    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true })
+      .select(adminOrderProjection);
     if (!order) {
       return res.status(404).json({ message: "Order not found." });
     }
