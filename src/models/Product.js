@@ -85,6 +85,9 @@ const productSchema = new mongoose.Schema(
   },
 );
 
+// Supports the admin and storefront sort order without forcing MongoDB to sort in memory.
+productSchema.index({ categorySlug: 1, position: 1, createdAt: 1 });
+
 applyCleanJson(productSchema);
 
 export const Product = mongoose.model("Product", productSchema);

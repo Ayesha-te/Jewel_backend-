@@ -241,7 +241,9 @@ async function syncCategoryProducts({
     currentSlug === nextSlug
       ? { categorySlug: nextSlug }
       : { categorySlug: { $in: [currentSlug, nextSlug] } },
-  ).sort({ position: 1, createdAt: 1 });
+  )
+    .sort({ position: 1, createdAt: 1 })
+    .allowDiskUse(true);
 
   const existingById = new Map(existingProducts.map((product) => [product.id, product]));
 
@@ -651,7 +653,9 @@ router.delete("/categories/:slug", async (req, res, next) => {
 
 router.get("/products", async (_req, res, next) => {
   try {
-    const items = await Product.find().sort({ categorySlug: 1, position: 1, createdAt: 1 });
+    const items = await Product.find()
+      .sort({ categorySlug: 1, position: 1, createdAt: 1 })
+      .allowDiskUse(true);
     res.json({ items });
   } catch (error) {
     next(error);

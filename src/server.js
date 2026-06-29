@@ -2,6 +2,7 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { connectDatabase } from "./config/database.js";
+import { Product } from "./models/Product.js";
 import { adminRouter } from "./routes/admin.js";
 import { publicRouter } from "./routes/public.js";
 import { ensureSiteSettings, ensureSuperUser } from "./seed/seedDatabase.js";
@@ -35,6 +36,7 @@ app.use((error, _req, res, _next) => {
 
 async function start() {
   await connectDatabase();
+  await Product.init();
   await ensureSiteSettings();
   const superUser = await ensureSuperUser();
 

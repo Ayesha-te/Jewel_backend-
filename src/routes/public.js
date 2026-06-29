@@ -82,7 +82,11 @@ router.get("/categories/:slug", async (req, res, next) => {
     }
 
     const [products, relatedCategories, siteChrome] = await Promise.all([
-      Product.find({ categorySlug: slug }).select(productProjection).sort({ position: 1, createdAt: 1 }).lean(),
+      Product.find({ categorySlug: slug })
+        .select(productProjection)
+        .sort({ position: 1, createdAt: 1 })
+        .allowDiskUse(true)
+        .lean(),
       Category.find({ slug: { $ne: slug } }).select(categoryListProjection).sort({ name: 1 }).limit(6).lean(),
       getSiteChromeData(),
     ]);
