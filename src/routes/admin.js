@@ -717,6 +717,20 @@ router.patch("/orders/:id/status", async (req, res, next) => {
   }
 });
 
+router.delete("/orders/:id", async (req, res, next) => {
+  try {
+    const deleted = await Order.findByIdAndDelete(req.params.id);
+
+    if (!deleted) {
+      return res.status(404).json({ message: "Order not found." });
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/orders/:id/pdf", async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id);
