@@ -8,13 +8,15 @@ import { ensureSiteSettings, ensureSuperUser } from "./seed/seedDatabase.js";
 
 const app = express();
 const port = Number(process.env.PORT || 5000);
+const bodyLimit = process.env.JSON_BODY_LIMIT || "50mb";
 
 app.use(
   cors({
     origin: true,
   }),
 );
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });

@@ -46,6 +46,10 @@ function getRequiredString(value, fieldName) {
   return normalized;
 }
 
+function hasOwnField(value, fieldName) {
+  return Object.prototype.hasOwnProperty.call(value ?? {}, fieldName);
+}
+
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -132,6 +136,36 @@ function normalizeDesignItems(value) {
       position: index,
     };
   });
+}
+
+function getCategorySubmission(body, existingCategory = null) {
+  const hasSubmittedProducts = hasOwnField(body, "products");
+  const submittedProducts = hasSubmittedProducts ? normalizeDesignItems(body?.products) : [];
+  const hasSubmittedGalleryImages = hasOwnField(body, "galleryImages");
+  const submittedGalleryImages = hasSubmittedGalleryImages ? normalizeStringArray(body?.galleryImages) : existingCategory?.galleryImages ?? [];
+  const hasSubmittedDesigns = hasOwnField(body, "designs");
+  const submittedDesigns = hasSubmittedDesigns ? Math.max(0, Number(body?.designs || 0)) : existingCategory?.designs ?? 0;
+  const hasSubmittedImage = hasOwnField(body, "image");
+  const submittedImage = body?.image?.toString().trim() || "";
+  const galleryImages = hasSubmittedProducts
+    ? submittedProducts.map((product) => product.image).filter(Boolean)
+    : submittedGalleryImages;
+  const image = hasSubmittedImage
+    ? submittedImage || galleryImages[0] || existingCategory?.image || ""
+    : existingCategory?.image || galleryImages[0] || "";
+  const designs = hasSubmittedProducts
+    ? submittedProducts.length
+    : hasSubmittedGalleryImages && submittedGalleryImages.length > 0
+      ? submittedGalleryImages.length
+      : submittedDesigns;
+
+  return {
+    hasSubmittedProducts,
+    submittedProducts,
+    galleryImages,
+    image,
+    designs,
+  };
 }
 
 async function removeProductCollections(productIds) {
@@ -445,12 +479,13 @@ router.post("/categories", async (req, res, next) => {
     const name = getRequiredString(req.body?.name, "Name");
     const slug = slugify(name);
     const description = getRequiredString(req.body?.description, "Description");
-    const submittedProducts = normalizeDesignItems(req.body?.products);
-    const submittedGalleryImages = normalizeStringArray(req.body?.galleryImages);
-    const submittedDesigns = Math.max(0, Number(req.body?.designs || 0));
-    const galleryImages = submittedProducts.length > 0 ? submittedProducts.map((product) => product.image).filter(Boolean) : submittedGalleryImages;
-    const image = req.body?.image?.toString().trim() || galleryImages[0] || "";
-    const designs = submittedProducts.length > 0 ? submittedProducts.length : galleryImages.length > 0 ? galleryImages.length : submittedDesigns;
+    const {
+      hasSubmittedProducts,
+      submittedProducts,
+      galleryImages,
+      image,
+      designs,
+    } = getCategorySubmission(req.body);
 
     const existing = await Category.findOne({ slug });
     if (existing) {
@@ -466,12 +501,14 @@ router.post("/categories", async (req, res, next) => {
       galleryImages,
     });
 
-    await syncCategoryProducts({
-      currentSlug: slug,
-      nextSlug: slug,
-      categoryDescription: description,
-      submittedProducts,
-    });
+    if (hasSubmittedProducts) {
+      await syncCategoryProducts({
+        currentSlug: slug,
+        nextSlug: slug,
+        categoryDescription: description,
+        submittedProducts,
+      });
+    }
 
     res.status(201).json(item);
   } catch (error) {
@@ -491,12 +528,13 @@ router.put("/categories/:slug", async (req, res, next) => {
     const name = getRequiredString(req.body?.name, "Name");
     const nextSlug = slugify(name);
     const description = getRequiredString(req.body?.description, "Description");
-    const submittedProducts = normalizeDesignItems(req.body?.products);
-    const submittedGalleryImages = normalizeStringArray(req.body?.galleryImages);
-    const submittedDesigns = Math.max(0, Number(req.body?.designs || 0));
-    const galleryImages = submittedProducts.length > 0 ? submittedProducts.map((product) => product.image).filter(Boolean) : submittedGalleryImages;
-    const image = req.body?.image?.toString().trim() || galleryImages[0] || "";
-    const designs = submittedProducts.length > 0 ? submittedProducts.length : galleryImages.length > 0 ? galleryImages.length : submittedDesigns;
+    const {
+      hasSubmittedProducts,
+      submittedProducts,
+      galleryImages,
+      image,
+      designs,
+    } = getCategorySubmission(req.body, category);
 
     if (nextSlug !== currentSlug) {
       const duplicate = await Category.findOne({ slug: nextSlug });
@@ -513,12 +551,14 @@ router.put("/categories/:slug", async (req, res, next) => {
     category.galleryImages = galleryImages;
     await category.save();
 
-    await syncCategoryProducts({
-      currentSlug,
-      nextSlug,
-      categoryDescription: description,
-      submittedProducts,
-    });
+    if (hasSubmittedProducts) {
+      await syncCategoryProducts({
+        currentSlug,
+        nextSlug,
+        categoryDescription: description,
+        submittedProducts,
+      });
+    }
 
     if (nextSlug !== currentSlug) {
       await HotSellingItem.updateMany(
